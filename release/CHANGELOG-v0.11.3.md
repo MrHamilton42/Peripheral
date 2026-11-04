@@ -1,0 +1,2 @@
+- Added an About note under Setup / Import for the optional Windows setup tool.
+- The initial Retail beta includes side panels for quests, groups, and current dungeon or raid bosses, plus the offline layout configurator.

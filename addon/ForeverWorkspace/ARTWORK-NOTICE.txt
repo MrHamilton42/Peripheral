@@ -1,0 +1,11 @@
+Peripheral logo and artwork
+
+Copyright (c) 2026 MrHamilton42. All rights reserved.
+
+The supplied Peripheral logo in Assets/Peripheral.svg, its PNG and TGA exports,
+and the copy embedded in Configurator.html are excluded from the MIT code
+license. The logo is included for use with the official Peripheral distribution.
+Separate permission is required to redistribute or modify the artwork. The MIT
+license applies to the original software and its documentation.
+
+No third-party addons, libraries or assets are redistributed in this package.

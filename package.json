@@ -1,0 +1,9 @@
+{
+  "name": "peripheral-prototype",
+  "version": "0.4.0",
+  "addonVersion": "0.11.3",
+  "private": true,
+  "description": "Local validation for Peripheral, formerly Forever Workspace",
+  "scripts": { "test": "node tests/run-tests.cjs" },
+  "devDependencies": { "fengari": "0.1.5", "luaparse": "0.3.1" }
+}
