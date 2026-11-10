@@ -1,4 +1,4 @@
-PERIPHERAL 0.11.3 - DEVELOPMENT PROTOTYPE / BETA
+PERIPHERAL 0.11.6 - DEVELOPMENT PROTOTYPE / BETA
 Retail test target: 12.1.5.70688, interface 120105.
 Forever is the intended target; compatibility remains unverified.
 No CurseForge approval or public release is implied by this proposed package.
@@ -86,7 +86,7 @@ do not Keep a mismatched layout; change geometry or use the optional helper.
 Unused gaps inside the rectangular WoW window still cover desktop applications.
 
 SETTINGS AND PANEL BEHAVIOR
-/fws lists Party, Raid, Dungeon, Quests, Minimap, TomTom coordinates, Bags, Left dock, Right dock
+/fws lists Party, Raid, Dungeon, Quests, Minimap, TomTom coordinates, Spoken narrator, Bags, Left dock, Right dock
 and Setup / Import on the left;
 the selected settings appear on the right. Side-panel Settings buttons select
 the matching entry. Switching entries preserves unsaved edits.
@@ -95,6 +95,14 @@ the matching entry. Switching entries preserves unsaved edits.
   Use Open full guide outside combat to open Blizzard's Adventure Guide on
   Main when it fits. Outside an instance, the guide opens on Dungeons.
   DungeonJournal on Forever is a separate integration still to be implemented.
+- The spellbook, talents, character skills, professions and Collections
+  windows stay within Main when they fit. Open them as usual after applying
+  the viewport. Placement changes wait until combat ends.
+- Spoken narrator is an optional side panel for the separately installed
+  Spoken addon. Select Spoken narrator in /peripheral, choose Restore to
+  sides, then Apply trial and Keep. The panel shows the current speaker,
+  transcript and waiting count, with Pause / Resume and Skip. Spoken
+  restarts the current line when resuming.
 - External addons can register optional read-only text panels through
   PeripheralAPI v1. See API.md for the contract. The panel list scrolls when
   more panels are available. Providers do not control monitor placement.

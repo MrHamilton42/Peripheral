@@ -483,6 +483,79 @@ local function restoreWindowPoints(saved)
     saved.frame:ClearAllPoints()
     for _,point in ipairs(saved.original) do saved.frame:SetPoint(point[1],point[2],point[3],point[4],point[5]) end
 end
+
+-- Keep these native windows on Main even on clients without HUD centering.
+local skillWindowNames={
+    "SpellBookFrame","PlayerSpellsFrame","PlayerTalentFrame","CharacterFrame",
+    "ProfessionsBookFrame","ProfessionsFrame","TradeSkillFrame","CraftFrame","ClassTrainerFrame",
+    "CollectionsJournal",
+}
+local skillWindowHooks={}
+local function clampSkillWindow(frame,g)
+    if not frame:IsShown() or (frame.IsForbidden and frame:IsForbidden()) then return end
+    local scale=L.PixelsPerUnit(frame:GetEffectiveScale(),g.height)
+    local left,bottom,width,height=frame:GetRect()
+    if not scale or not left or width<=0 or height<=0 then return end
+    local main=g.main
+    local saved=W.skillWindows[frame]
+    if width*scale>main.width or height*scale>main.height then
+        restoreWindowPoints(saved)
+        W.skillWindows[frame]=nil
+        return
+    end
+    local x,y=left*scale,g.height-(bottom+height)*scale
+    local dx=math.max(main.x,math.min(x,main.x+main.width-width*scale))-x
+    local dy=math.max(main.y,math.min(y,main.y+main.height-height*scale))-y
+    if math.abs(dx)<1 and math.abs(dy)<1 then return end
+    local before=windowPoints(frame)
+    if #before==0 then return end
+    if not saved or not sameWindowPoints(frame,saved.written) then saved={frame=frame,original=before} end
+    local ok,message=pcall(function()
+        frame:ClearAllPoints()
+        for _,point in ipairs(before) do
+            frame:SetPoint(point[1],point[2],point[3],(point[4] or 0)+dx/scale,(point[5] or 0)-dy/scale)
+        end
+    end)
+    saved.written=windowPoints(frame)
+    W.skillWindows[frame]=saved
+    if not ok then
+        restoreWindowPoints(saved)
+        W.skillWindows[frame]=nil
+        error(message)
+    end
+end
+local function refreshSkillWindows()
+    local g=W.skillGeometry
+    if not g then return end
+    if windowCombat() then W.skillPending=true;return end
+    W.skillPending=nil
+    for _,name in ipairs(skillWindowNames) do
+        local frame=_G[name]
+        if frame and frame.GetRect and not (frame.IsForbidden and frame:IsForbidden()) then
+            if not skillWindowHooks[frame] and frame.HookScript then
+                skillWindowHooks[frame]=true
+                pcall(frame.HookScript,frame,"OnShow",function()
+                    if W.skillGeometry and C_Timer and C_Timer.After then C_Timer.After(0,refreshSkillWindows)
+                    else refreshSkillWindows() end
+                end)
+            end
+            local ok,message=pcall(clampSkillWindow,frame,g)
+            if not ok then W.lastStatus="Could not place "..name.." on Main: "..tostring(message) end
+        end
+    end
+end
+function W.RouteSkillWindows(g)
+    W.skillGeometry=g
+    W.skillWindows=W.skillWindows or {}
+    if not W.skillHooks and type(hooksecurefunc)=="function" then
+        for _,name in ipairs({"ShowUIPanel","UpdateUIPanelPositions"}) do
+            if type(_G[name])=="function" then hooksecurefunc(name,refreshSkillWindows) end
+        end
+        W.skillHooks=true
+    end
+    refreshSkillWindows()
+end
+
 function W.PlaceGuide(geometry)
     local frame=EncounterJournal
     local saved=W.guide
@@ -549,6 +622,7 @@ local function centerWindowAttributes()
     end
 end
 function W.Refresh()
+    refreshSkillWindows()
     if not W.enabled then return end
     if windowCombat() then W.pending=true;return end
     W.pending=nil
@@ -589,12 +663,17 @@ function W.Center(g,pixelsPerUnit)
 end
 function W.Restore()
     W.enabled=false;W.pending=nil
+    W.skillGeometry=nil;W.skillPending=nil
     local record=W.record
-    if not record and not W.guide then return true,"No native window offsets to restore." end
+    if not record and not W.guide and not next(W.skillWindows or {}) then return true,"No native window offsets to restore." end
     if windowCombat() then return nil,"Native window restoration pending until combat ends." end
     if record and not windowCaps() then return nil,"Native window layout APIs are unavailable for restoration." end
     local ok,err=pcall(function()
         restoreWindowPoints(W.guide);W.guide=nil
+        for frame,saved in pairs(W.skillWindows or {}) do
+            restoreWindowPoints(saved)
+            W.skillWindows[frame]=nil
+        end
         if not record then return end
         for _,key in ipairs(windowKeys) do
             if record.written[key]~=nil and GetUIPanelLayoutAttribute(key)==record.written[key] then

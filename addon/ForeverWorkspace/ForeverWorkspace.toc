@@ -1,9 +1,9 @@
-## Interface: 120105
+## Interface: 120105, 16001
 ## Title: Peripheral - Development Beta
 ## Notes: Multi-monitor viewport and live panels. Includes a local HTML configurator and JSON import; helper optional. Disabled on login/reload. Forever compatibility unverified.
 ## Author: Peripheral project
-## Version: 0.11.3
-## OptionalDeps: PeripheralBridge
+## Version: 0.11.6
+## OptionalDeps: PeripheralBridge, Spoken
 ## IconTexture: Interface\AddOns\ForeverWorkspace\Assets\Peripheral.tga
 ## SavedVariables: ForeverWorkspaceDB
 Geometry.lua

@@ -1,7 +1,7 @@
 local addonName, FW = ...
 local L = FW.Layout
 local D=FW.Dock
-local VERSION = "0.11.3"
+local VERSION = "0.11.6"
 FW.Version = VERSION
 local active, originalPoints, deadline, pendingRestore, pendingHudRestore
 local pendingWindowRestore
@@ -28,10 +28,11 @@ local defaults = {
     {id="quests", title="Quest objectives", region="right", min=180, preferred=320, max=700, fill=true},
     {id="minimap", title="Minimap", region="right", min=320, preferred=330, max=500, fill=false,enabled=false},
     {id="tomtom", title="TomTom coordinates", region="right", min=120, preferred=140, max=260, fill=false,enabled=false},
+    {id="spoken", title="Spoken narrator", region="left", min=160, preferred=260, max=600, fill=false,enabled=false},
 }
 local preferences = {}
 local textSizes = {}
-local textProviders={tomtom={}}
+local textProviders={tomtom={},spoken={}}
 local pendingProviders={}
 local providerCount=0
 local function secret(value) return issecretvalue and issecretvalue(value) end
@@ -128,6 +129,55 @@ function TT.Read(env)
     if value=='' then return 'In /tomtom, open Data Feed Options and enable the coordinates feed. If already enabled, move or try outdoors.' end
     if type(value)~='string' or #value>96 or value:find('[|%c]') then return 'TomTom coordinates are temporarily unavailable.' end
     return 'Player coordinates\n'..value
+end
+
+local S={}
+local function spokenText(value,limit)
+    if secret(value) or type(value)~="string" then return "" end
+    if #value>limit then
+        -- Back up past continuation bytes so truncation leaves valid UTF-8.
+        local nextByte=value:byte(limit+1)
+        while limit>0 and nextByte>=128 and nextByte<192 do
+            limit=limit-1
+            nextByte=value:byte(limit+1)
+        end
+        value=value:sub(1,limit).."..."
+    end
+    value=value:gsub("|H[^|]*|h([^|]*)|h","%1"):gsub("|c%x%x%x%x%x%x%x%x",""):gsub("|r","")
+    value=value:gsub("|T[^|]*|t",""):gsub("|A[^|]*|a",""):gsub("|n","\n"):gsub("\r\n","\n"):gsub("\r","\n")
+    return (value:gsub("[%z\1-\9\11-\31\127]",""):gsub("|","||"))
+end
+function S.Read()
+    local spoken=_G.Spoken
+    if not spoken then return {text="Install and enable Spoken to see its narration here."} end
+    local ok,state=pcall(function()
+        if type(spoken.IsCompatible)~="function" or not spoken:IsCompatible(1)
+            or type(spoken.GetNowPlaying)~="function" or type(spoken.GetQueueSize)~="function"
+            or type(spoken.IsPaused)~="function" then
+            return {text="This version of Spoken does not expose the playback API."}
+        end
+        local clip=spoken:GetNowPlaying()
+        local paused=spoken:IsPaused()==true
+        local queueSize=spoken:GetQueueSize()
+        local waiting=math.max(0,queueSize-(clip and 1 or 0))
+        local status=paused and "Paused" or (clip and "Playing" or (waiting>0 and "Waiting to play" or "Nothing playing"))
+        if waiting>0 then status=status..string.format(" (%d queued)",waiting) end
+        local lines={status}
+        if clip then
+            local present=clip.present or {}
+            local header=spokenText(present.header,160)
+            local label=spokenText(present.label,160)
+            local transcript=spokenText(present.transcript or clip.text,4096)
+            if header~="" then lines[#lines+1]=header end
+            if label~="" and label~=header then lines[#lines+1]=label end
+            if transcript~="" then lines[#lines+1]="\n"..transcript end
+        end
+        return {text=table.concat(lines,"\n"),spoken=spoken,clip=clip,paused=paused,
+            playback=(paused or clip~=nil) and spoken[paused and "Resume" or "Pause"] or nil,
+            skip=clip and spoken.Skip or nil}
+    end)
+    if ok then return state end
+    return {text="Spoken narration is temporarily unavailable."}
 end
 
 -- Read-only provider, separate from placement and rendering. Normal and world
@@ -609,7 +659,17 @@ local function contentPanel(panel)
         local provider=textProviders[self.panelID]
         if provider then
             if self.minimized then return end
-            local text=self.panelID=='tomtom' and TT.Read() or provider.text
+            local text=provider.text
+            if self.panelID=='tomtom' then text=TT.Read()
+            elseif self.panelID=='spoken' then
+                local state=S.Read()
+                self.actions[1]:SetText(state.paused and "Resume" or "Pause")
+                self.actions[1]:SetEnabled(type(state.playback)=="function")
+                self.actions[2]:SetEnabled(type(state.skip)=="function")
+                if self.spokenClip~=state.clip then self.offset=0;self:ScrollBy(0) end
+                self.spokenClip=state.clip
+                text=state.text
+            end
             if not text or text=='' then text='Waiting for data from the provider.' end
             if self.providerText==text then return end
             self.providerText=text
@@ -662,6 +722,19 @@ local function contentPanel(panel)
         end
     end
     if panel.id=='minimap' then frame:SetFrameStrata('BACKGROUND') end
+    if panel.id=='spoken' then
+        local function playbackAction(key)
+            local state=S.Read()
+            local action=state[key]
+            if type(action)~="function" then return end
+            if not pcall(action,state.spoken) then say("Spoken could not change playback.") end
+            if not inCombat() and frame:Refresh() then reflowPanels() end
+        end
+        frame.actions={
+            button(frame,"Pause",12,0,100,function() playbackAction("playback") end),
+            button(frame,"Skip",116,0,100,function() playbackAction("skip") end),
+        }
+    end
     if panel.id=='dungeon' and J.IsRetail()
         and (ToggleEncounterJournal or EncounterJournal_LoadUI or (C_AddOns and C_AddOns.LoadAddOn)) then
         frame.actions={button(frame,'Open full guide',12,0,120,function()
@@ -922,7 +995,7 @@ local function resumeAfterZone()
     local ok,message=pcall(function()
         placeWorld(FW.Geometry,canvas.height)
         reflowPanels()
-        if FW.NativeWindows.enabled then FW.NativeWindows.Refresh() end
+        FW.NativeWindows.Refresh()
         if FW.Bags.enabled then FW.Bags.Refresh() end
     end)
     if not ok then reset("Workspace could not resume after loading.");say(tostring(message));return end
@@ -1000,6 +1073,7 @@ local function apply(quietTrial)
     end
     reflowPanels()
     if FW.NativeWindows.enabled then FW.NativeWindows.Center(FW.Geometry,prepared.ratioX) end
+    FW.NativeWindows.RouteSkillWindows(FW.Geometry)
     if FW.Bags.enabled then FW.Bags.Center(FW.Geometry,FW.Bags.Options(ForeverWorkspaceDB.bags)) end
     controls.status:SetText("Trial applied. Click Keep within 20 seconds, or the viewport resets.")
     if quietTrial~=true then say("20-second viewport trial started. Green border marks the requested 3D area.") end
@@ -1603,7 +1677,7 @@ events:SetScript("OnEvent",function(_,event,name)
         say("v"..VERSION.." loaded disabled. "..geometrySummary()..". /fws opens controls."..(ForeverWorkspaceDB.geometryMigrationNotice and " "..ForeverWorkspaceDB.geometryMigrationNotice or ""))
         if helperMessage then say(helperMessage) end
     elseif event=="ADDON_LOADED" then
-        if FW.NativeWindows.enabled then FW.NativeWindows.Refresh() end
+        FW.NativeWindows.Refresh()
         if FW.Bags.enabled then FW.Bags.Refresh() end
     elseif event=="PLAYER_LOGOUT" then
         if active or originalPoints or alignmentActive then reset("Viewport restored for logout. Reapply after login/reload.") end
@@ -1629,7 +1703,7 @@ events:SetScript("OnEvent",function(_,event,name)
         if pendingWindowRestore then
             local restored,message=FW.NativeWindows.Restore();pendingWindowRestore=not restored
             if not restored then say(message) end
-        elseif FW.NativeWindows.pending then FW.NativeWindows.Refresh() end
+        elseif FW.NativeWindows.pending or FW.NativeWindows.skillPending then FW.NativeWindows.Refresh() end
         if pendingBagRestore then
             local restored,message=FW.Bags.Restore();pendingBagRestore=not restored
             if not restored then say(message) end
